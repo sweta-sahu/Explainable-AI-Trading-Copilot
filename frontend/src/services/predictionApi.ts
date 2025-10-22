@@ -6,6 +6,7 @@ import {
   RetryManager, 
   createValidationError,
   createApiError,
+  ErrorType,
   type AppError 
 } from '../utils/errorHandling';
 
