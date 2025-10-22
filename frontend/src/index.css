@@ -1,0 +1,14 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* This file is now much simpler.
+It just needs to initialize Tailwind CSS and apply basic font smoothing.
+All the specific styling like background colors, fonts, etc.,
+is now handled directly by Tailwind utility classes in the App.tsx component.
+This prevents CSS conflicts.
+*/
+body {
+-webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
+}
