@@ -8,20 +8,20 @@ import { SkeletonLoader } from './components/SkeletonLoader';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { useApiData } from './hooks/useApiData';
-import { MOCK_HEALTH, MOCK_HISTORY } from './data/mock';
+import { useHistoryData } from './hooks/useHistoryData';
+import { MOCK_HEALTH } from './data/mock';
 
 function App() {
   const [ticker, setTicker] = useState('AAPL');
   const { data: prediction, loading, error, isRefreshing, fetchData, retry, clearError } = useApiData();
-  const history = useMemo(() => MOCK_HISTORY(ticker), [ticker]);
+  const { data: history, loading: historyLoading, error: historyError, fetchHistory } = useHistoryData();
 
-  // Debug logging
-  console.log('🔍 App render - loading:', loading, 'prediction:', !!prediction, 'error:', !!error);
+
 
   // Fetch initial data on mount
   useEffect(() => {
-    console.log('🚀 App mounted, fetching initial data for:', ticker);
     fetchData(ticker);
+    fetchHistory(ticker);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Handle ticker changes
@@ -29,6 +29,7 @@ function App() {
     setTicker(newTicker);
     if (newTicker.trim()) {
       fetchData(newTicker);
+      fetchHistory(newTicker);
     }
   };
 
@@ -36,6 +37,7 @@ function App() {
   const handlePredict = () => {
     if (ticker.trim()) {
       fetchData(ticker);
+      fetchHistory(ticker);
     }
   };
 
@@ -105,7 +107,33 @@ function App() {
         </section>
 
         <section>
-          <HistoryTable rows={history} />
+          <ErrorBoundary>
+            {historyLoading === 'loading' ? (
+              <SkeletonLoader variant="history-table" />
+            ) : historyError ? (
+              <div className="rounded-2xl border border-red-500/20 bg-gray-900/50 p-6 shadow-2xl shadow-black/40 backdrop-blur-lg">
+                <div className="flex flex-col items-center justify-center space-y-4 text-center py-8">
+                  <div className="rounded-full bg-red-500/10 p-3">
+                    <svg className="h-6 w-6 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white mb-2">Unable to Load History</h3>
+                    <p className="text-sm text-white/70">{historyError.message}</p>
+                  </div>
+                  <button
+                    onClick={() => fetchHistory(ticker)}
+                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-500"
+                  >
+                    Try Again
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <HistoryTable rows={history} />
+            )}
+          </ErrorBoundary>
         </section>
       </main>
 

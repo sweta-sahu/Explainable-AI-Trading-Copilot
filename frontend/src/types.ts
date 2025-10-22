@@ -35,6 +35,19 @@ export type HistoryRow = {
   outcome: 'CORRECT' | 'INCORRECT' | null;
 };
 
+// History API response type
+export type HistoryApiResponse = {
+  model_version: string;
+  features_s3_path: string;
+  datatype: string;
+  data_found_for: string;
+  ingested_at: string;
+  confidence: string;
+  prediction: 'Up' | 'Down';
+  probability_up: string;
+  ticker_date: string;
+};
+
 // API-related types
 export type LoadingState = 'idle' | 'loading' | 'refreshing' | 'error';
 

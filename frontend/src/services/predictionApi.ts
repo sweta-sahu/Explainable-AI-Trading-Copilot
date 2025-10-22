@@ -1,4 +1,4 @@
-import type { Prediction, Factor } from '../types';
+import type { Prediction, Factor, HistoryRow } from '../types';
 import { config } from '../config/api';
 import { 
   normalizeError, 
@@ -21,6 +21,19 @@ export interface ApiResponse {
     top_features: string[];
     values: string[];
   };
+}
+
+// History API Response interface
+export interface HistoryApiResponse {
+  model_version: string;
+  features_s3_path: string;
+  datatype: string;
+  data_found_for: string;
+  ingested_at: string;
+  confidence: string;
+  prediction: 'Up' | 'Down';
+  probability_up: string;
+  ticker_date: string;
 }
 
 // API Configuration
@@ -108,6 +121,22 @@ export function transformApiResponse(response: ApiResponse): Prediction {
       source: 'AI Model'
     }] // Include model explanation as news item
   };
+}
+
+// Transform history API response to HistoryRow type
+export function transformHistoryResponse(historyData: HistoryApiResponse[]): HistoryRow[] {
+  return historyData.map(item => {
+    // Format date to be more user-friendly (YYYY-MM-DD format)
+    const date = new Date(item.data_found_for);
+    const formattedDate = date.toISOString().split('T')[0];
+    
+    return {
+      date: formattedDate,
+      direction: item.prediction.toUpperCase() as 'UP' | 'DOWN',
+      probability: parseFloat(item.probability_up),
+      outcome: null // We don't have outcome data from the API, so set to null (pending)
+    };
+  }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort by date descending
 }
 
 // Validate ticker symbol format
@@ -209,11 +238,9 @@ export class PredictionApiService {
         }
 
         const data: ApiResponse = await response.json();
-        console.log('📦 Raw API response:', data);
         
         // Validate response structure
         if (!data.ticker || !data.prediction || typeof data.confidence !== 'number') {
-          console.log('❌ Invalid response structure:', data);
           const error = createApiError('Invalid response format from server', 500, 'INVALID_RESPONSE', { ...attemptContext, responseData: data });
           throw error;
         }
@@ -221,7 +248,6 @@ export class PredictionApiService {
         // Success - cleanup and return transformed data
         this.activeRequests.delete(abortController);
         const transformedData = transformApiResponse(data);
-        console.log('🔄 Transformed data:', transformedData);
         return transformedData;
 
       } catch (error) {
@@ -262,6 +288,105 @@ export class PredictionApiService {
   // Get current configuration
   getConfig(): ApiConfig {
     return { ...this.config };
+  }
+
+  // Fetch prediction history for a ticker
+  async fetchHistory(ticker: string): Promise<HistoryRow[]> {
+    const context = { ticker, endpoint: 'history' };
+    
+    // Validate ticker format
+    const validation = validateTicker(ticker);
+    if (!validation.valid && validation.error) {
+      errorLogger.log(validation.error, context);
+      throw validation.error;
+    }
+
+    // Create a new AbortController for this request
+    const abortController = new AbortController();
+    this.activeRequests.add(abortController);
+
+    const cleanTicker = ticker.trim().toUpperCase();
+    const url = `${this.config.baseUrl}/get-history/${cleanTicker}`;
+    let lastError: AppError;
+
+    for (let attempt = 1; attempt <= this.config.retryAttempts; attempt++) {
+      const attemptContext = { ...context, attempt, maxAttempts: this.config.retryAttempts };
+      
+      try {
+        // Create timeout promise
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error('Request timeout')), this.config.timeout);
+        });
+
+        // Make the fetch request
+        const fetchPromise = fetch(url, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          signal: abortController.signal,
+        });
+
+        const response = await Promise.race([fetchPromise, timeoutPromise]);
+
+        if (!response.ok) {
+          let error: AppError;
+          
+          if (response.status === 404) {
+            error = createApiError(`No history found for ticker "${cleanTicker}"`, 404, 'HISTORY_NOT_FOUND', attemptContext);
+          } else if (response.status === 429) {
+            error = createApiError('Too many requests. Please wait before trying again.', 429, 'RATE_LIMITED', attemptContext);
+          } else if (response.status >= 500) {
+            error = createApiError(`Server error (${response.status}). Please try again.`, response.status, 'SERVER_ERROR', attemptContext);
+          } else {
+            error = createApiError(`Request failed with status ${response.status}`, response.status, 'HTTP_ERROR', attemptContext);
+          }
+          
+          throw error;
+        }
+
+        const data: HistoryApiResponse[] = await response.json();
+        
+        // Validate response structure
+        if (!Array.isArray(data)) {
+          const error = createApiError('Invalid history response format from server', 500, 'INVALID_RESPONSE', { ...attemptContext, responseData: data });
+          throw error;
+        }
+
+        // Success - cleanup and return transformed data
+        this.activeRequests.delete(abortController);
+        const transformedData = transformHistoryResponse(data);
+        return transformedData;
+
+      } catch (error) {
+        const normalizedError = normalizeError(error, attemptContext);
+        lastError = normalizedError;
+
+        // Log the error
+        errorLogger.log(normalizedError, attemptContext);
+
+        // Don't retry if request was cancelled or if it's a non-retryable error
+        if (normalizedError.type === ErrorType.CANCELLED || !RetryManager.shouldRetry(normalizedError, attempt, this.config.retryAttempts)) {
+          this.activeRequests.delete(abortController);
+          throw normalizedError;
+        }
+
+        // If this is the last attempt, cleanup and throw the error
+        if (attempt === this.config.retryAttempts) {
+          this.activeRequests.delete(abortController);
+          throw normalizedError;
+        }
+
+        // Wait before retrying with exponential backoff
+        const delay = RetryManager.getRetryDelay(attempt, this.config.retryDelay);
+        await RetryManager.sleep(delay);
+      }
+    }
+
+    // Cleanup and throw the last error
+    this.activeRequests.delete(abortController);
+    throw lastError!;
   }
 }
 
