@@ -1,9 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 type TickerInputProps = {
   value: string;
   onChange: (v: string) => void;
-  onPredict: () => void;
+  onPredict: (ticker?: string) => void;
   disabled?: boolean;
   error?: string;
 };
@@ -11,9 +11,19 @@ type TickerInputProps = {
 export function TickerInput({ value, onChange, onPredict, disabled = false, error }: TickerInputProps) {
   const [localValue, setLocalValue] = useState(value);
 
+  // Sync local value with parent value
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
   const handlePredict = () => {
-    onChange(localValue.trim() || 'AAPL'); // Fallback to AAPL if empty
-    onPredict();
+    const ticker = localValue.trim() || 'AAPL'; // Fallback to AAPL if empty
+    
+    // Update the parent ticker state
+    onChange(ticker);
+    
+    // Pass the ticker directly to onPredict to avoid stale state issues
+    onPredict(ticker);
   };
 
   return (

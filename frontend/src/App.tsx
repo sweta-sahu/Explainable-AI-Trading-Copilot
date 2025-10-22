@@ -24,20 +24,17 @@ function App() {
     fetchHistory(ticker);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle ticker changes
+  // Handle ticker changes (for typing in input)
   const handleTickerChange = (newTicker: string) => {
     setTicker(newTicker);
-    if (newTicker.trim()) {
-      fetchData(newTicker);
-      fetchHistory(newTicker);
-    }
   };
 
-  // Handle predict button click (refresh current ticker)
-  const handlePredict = () => {
-    if (ticker.trim()) {
-      fetchData(ticker);
-      fetchHistory(ticker);
+  // Handle predict button click (fetch data for current ticker)
+  const handlePredict = (tickerToFetch?: string) => {
+    const targetTicker = tickerToFetch || ticker;
+    if (targetTicker.trim()) {
+      fetchData(targetTicker);
+      fetchHistory(targetTicker);
     }
   };
 
