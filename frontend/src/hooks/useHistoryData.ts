@@ -1,48 +1,44 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { predictionApi } from '../services/predictionApi';
 import { normalizeError, errorLogger, getUserFriendlyMessage, type AppError } from '../utils/errorHandling';
-import type { Prediction, LoadingState } from '../types';
+import type { HistoryRow, LoadingState } from '../types';
 
-export interface UseApiDataReturn {
-  data: Prediction | null;
+export interface UseHistoryDataReturn {
+  data: HistoryRow[];
   loading: LoadingState;
   error: AppError | null;
-  isRefreshing: boolean;
-  fetchData: (ticker: string) => Promise<void>;
-  retry: () => void;
+  fetchHistory: (ticker: string) => Promise<void>;
   clearError: () => void;
 }
 
-export function useApiData(): UseApiDataReturn {
-  const [data, setData] = useState<Prediction | null>(null);
+export function useHistoryData(): UseHistoryDataReturn {
+  const [data, setData] = useState<HistoryRow[]>([]);
   const [loading, setLoading] = useState<LoadingState>('idle');
   const [error, setError] = useState<AppError | null>(null);
   const lastTickerRef = useRef<string>('');
   const mountedRef = useRef(true);
 
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
       mountedRef.current = false;
-      // Don't cancel requests on unmount to avoid the abort error
     };
   }, []);
 
-  const fetchData = useCallback(async (ticker: string) => {
-    const context = { ticker, component: 'useApiData' };
+  const fetchHistory = useCallback(async (ticker: string) => {
+    const context = { ticker, component: 'useHistoryData' };
     
     // Clear previous error and set loading
     setError(null);
-    setLoading(prevData => prevData ? 'refreshing' : 'loading');
+    setLoading('loading');
     
     lastTickerRef.current = ticker;
 
     try {
-      const prediction = await predictionApi.fetchPrediction(ticker);
+      const historyData = await predictionApi.fetchHistory(ticker);
       
       // Always update state if we get here
-      setData(prediction);
+      setData(historyData);
       setLoading('idle');
       setError(null);
       
@@ -70,12 +66,6 @@ export function useApiData(): UseApiDataReturn {
     }
   }, []);
 
-  const retry = useCallback(() => {
-    if (lastTickerRef.current) {
-      fetchData(lastTickerRef.current);
-    }
-  }, [fetchData]);
-
   const clearError = useCallback(() => {
     setError(null);
     if (loading === 'error') {
@@ -87,9 +77,7 @@ export function useApiData(): UseApiDataReturn {
     data,
     loading,
     error,
-    isRefreshing: loading === 'refreshing',
-    fetchData,
-    retry,
+    fetchHistory,
     clearError,
   };
 }
