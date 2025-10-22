@@ -34,3 +34,19 @@ export type HistoryRow = {
   probability: number;
   outcome: 'CORRECT' | 'INCORRECT' | null;
 };
+
+// API-related types
+export type LoadingState = 'idle' | 'loading' | 'refreshing' | 'error';
+
+// Legacy type for backward compatibility
+export type ApiError = {
+  message: string;
+  code?: string;
+  status?: number;
+};
+
+export type PredictionState = {
+  data: Prediction | null;
+  loading: LoadingState;
+  error: ApiError | null;
+};
