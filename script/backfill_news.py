@@ -83,7 +83,7 @@ if __name__ == "__main__":
         for ticker in WATCHLIST:
             s3_key = f"{S3_NEWS_PATH}{date_str}/{ticker}.json"
             if file_exists_in_s3(S3_BUCKET, s3_key):
-                print(f"  - ✅ File for {ticker} on {date_str} already exists. Skipping.")
+                print(f"  - File for {ticker} on {date_str} already exists. Skipping.")
                 continue
 
             print(f"  - Fetching news for {ticker} on {date_str}...")
@@ -97,7 +97,7 @@ if __name__ == "__main__":
                     s3_client.put_object(Bucket=S3_BUCKET, Key=s3_key, Body=file_content)
                     print(f"    - Success! Uploaded {len(news_articles)} articles.")
                 except Exception as e:
-                    print(f"    - 🛑 UPLOAD ERROR for {ticker} on {date_str}: {e}")
+                    print(f"UPLOAD ERROR for {ticker} on {date_str}: {e}")
 
             time.sleep(5) 
 
