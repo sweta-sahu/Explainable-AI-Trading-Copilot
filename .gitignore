@@ -12,3 +12,5 @@ frontend/.env.local
 frontend/.env.development
 frontend/.env.production
 frontend/.env.test
+
+lambdas/shap_explainer/__pycache__

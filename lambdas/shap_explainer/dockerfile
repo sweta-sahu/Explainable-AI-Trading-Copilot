@@ -1,24 +1,21 @@
-# Use the official AWS Lambda Python 3.10 base image
+FROM public.ecr.aws/lambda/python:3.10 AS builder
+
+RUN yum update -y && \
+    yum install -y gcc-c++ && \
+    yum clean all
+
+RUN pip install --upgrade pip
+
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir "numpy==1.26.4" -t ./python
+
+RUN pip install --no-cache-dir -r requirements.txt -t ./python
+
 FROM public.ecr.aws/lambda/python:3.10
 
-# Copy requirements file
-COPY requirements.txt ${LAMBDA_TASK_ROOT}/
+COPY --from=builder /var/task/python /var/lang/lib/python3.10/site-packages/
 
-# Install Python dependencies for the correct platform.
-# The --platform flag for pip is crucial for cross-compiling on a Mac for Lambda (x86_64).
-# It forces pip to download pre-compiled "wheels" compatible with the Lambda runtime.
-RUN pip install --upgrade pip && \
-    pip install \
-    --platform manylinux2014_x86_64 \
-    --target=${LAMBDA_TASK_ROOT} \
-    --implementation cp \
-    --python-version 3.10 \
-    --only-binary=:all: \
-    --no-cache-dir \
-    -r ${LAMBDA_TASK_ROOT}/requirements.txt
+COPY handler.py .
 
-# Copy the Lambda function code (no changes needed)
-COPY handler.py ${LAMBDA_TASK_ROOT}/
-
-# Set the CMD to your handler (no changes needed)
 CMD [ "handler.lambda_handler" ]

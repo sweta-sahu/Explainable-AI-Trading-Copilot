@@ -11,7 +11,7 @@ DDB_TABLE = os.getenv("DDB_TABLE", "TradingCopilot")
 REGION = os.getenv("AWS_REGION", "us-east-1")
 
 # --- Specific path for the SageMaker model ---
-MODEL_S3_BUCKET = "sagemaker-us-east-1-005716754528" 
+MODEL_S3_BUCKET = "sagemaker-us-east-1-<account-id>" 
 MODEL_S3_KEY = "stock-model-tuning/stock-xgb-tuning-251018-0001-005-a1482f12/output/model.tar.gz"
 
 # --- AWS Clients ---
@@ -19,12 +19,19 @@ s3 = boto3.client("s3", region_name=REGION)
 ddb = boto3.resource("dynamodb", region_name=REGION)
 table = ddb.Table(DDB_TABLE)
 
-# --- Helper: read CSV from S3 (Unchanged) ---
+
+# --- helper: build the new features path ---
+def feature_key_for(ticker: str, date_str: str) -> str:
+    # filenames look like AAPL_features.csv, AMZN_features.csv, etc.
+    fname = f"{ticker.upper()}_features.csv"
+    return f"features/daily_inference/{date_str}/{fname}"
+
+# --- Helper: read CSV from S3 ---
 def read_csv_from_s3(bucket, key):
     obj = s3.get_object(Bucket=bucket, Key=key)
     return pd.read_csv(io.BytesIO(obj["Body"].read()))
 
-# --- Helper: universal model loader from S3 (Unchanged) ---
+# --- Helper: universal model loader from S3 ---
 def load_model_safely(s3_client, bucket, key):
     """
     Load a model from a .tar.gz archive (SageMaker output) from S3.
@@ -89,15 +96,15 @@ def load_model_safely(s3_client, bucket, key):
         print(f"[ERROR] Failed to load model: {e}")
         raise
 
-# --- Main Lambda handler (--- COMPLETELY REWRITTEN ---) ---
+# --- Main Lambda handler ---
 def lambda_handler(event, context):
     
     print(f"[INFO] Received {len(event.get('Records', []))} records from DDB stream.")
     
-    # --- NEW: Helper to deserialize DDB stream records ---
+    # --- Helper to deserialize DDB stream records ---
     ddb_deserializer = TypeDeserializer()
 
-    # 1️⃣ Load model from S3 (once per invocation)
+    # Load model from S3 (once per invocation)
     try:
         model, mtype = load_model_safely(s3, MODEL_S3_BUCKET, MODEL_S3_KEY)
         print("[INFO] Model loaded successfully.")
@@ -107,7 +114,7 @@ def lambda_handler(event, context):
 
     processed_count = 0
     
-    # --- NEW: Process each record from the stream ---
+    # --- Process each record from the stream ---
     for record in event.get("Records", []):
         
         # 1.1 Check if it's a new item
@@ -144,20 +151,18 @@ def lambda_handler(event, context):
             print(f"[ERROR] Failed to parse prediction record: {e}. Record: {item}")
             continue # Skip this broken record
 
-        # 2️⃣ Load feature data from S3 (--- NO LOOKBACK ---)
+        # Load feature data from S3 (--- NO LOOKBACK ---)
         # We load the *exact* file the prediction was based on.
-        # NOTE: Make sure this S3 path matches your feature pipeline!
-        key = f"features/symbol={ticker}/date={data_found_for}/features.csv"
-        
+        key = feature_key_for(ticker, data_found_for)
+
         try:
             df = read_csv_from_s3(S3_BUCKET, key)
             print(f"[INFO] Success: Loaded from S3: s3://{S3_BUCKET}/{key}")
         except Exception as e:
-            # If we can't get the features, we can't run SHAP.
             print(f"[ERROR] Could not load features for {ticker_date_key} from {key}: {e}")
-            continue # Skip this record
+            continue  # Skip this record
 
-        # 3️⃣ Clean + align features (Same as before)
+        # Clean + align features
         drop_cols = ["target_up", "symbol", "asof", "date"]
         df = df.drop(columns=[c for c in drop_cols if c in df.columns], errors="ignore")
 
@@ -184,7 +189,7 @@ def lambda_handler(event, context):
 
         print(f"[DEBUG] X shape after re-aligning: {X.shape}")
 
-        # 4️⃣ Compute SHAP (Same as before)
+        # Compute SHAP
         if mtype == "json":
             explainer = shap.Explainer(model)
         else:
@@ -206,7 +211,7 @@ def lambda_handler(event, context):
 
         print(f"[RESULT] Top SHAP features: {top_features}")
 
-        # 5️⃣ Save to DynamoDB (Same as before)
+        # Save to DynamoDB
         # This saves the *new* 'shap' item
         item = {
             "ticker_date": f"{ticker}_{asof}", # Use the original 'asof' date for the key
@@ -222,7 +227,7 @@ def lambda_handler(event, context):
 
         json_top_factors = [[feature, float(value)] for feature, value in top_features]
 
-        # 6️⃣ Return result
+        # Return result
         return {
             "statusCode": 200,
             "headers": {
@@ -231,8 +236,8 @@ def lambda_handler(event, context):
             },
             "body": json.dumps({
                 "ticker": ticker,
-                "asof": asof, # The date the user requested
-                "data_found_for": data_found_for, # The date data was actually found for
-                "top_factors": json_top_factors # <-- HERE ARE THE RESULTS
+                "asof": asof,
+                "data_found_for": data_found_for,
+                "top_factors": json_top_factors
             })
         }
