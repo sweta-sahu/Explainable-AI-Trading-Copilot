@@ -56,13 +56,13 @@ ai-trading-copilot/
 
 ### High-level
 
-<img src="./architecture_digrams/Architecture_diagram.svg" alt="Architecture Diagram" width="1200px" height="500px"/>
+![Architecture diagram](./architecture_digrams/architecture_diagram.png)
 
 
 ### `/predict` sequence
 
 
-<img src="./architecture_digrams/predict-api-sequence-dig.svg" alt="Architecture Diagram" width="1050px" height="500px"/>
+![predict api sequence diagram](./architecture_digrams/predict-api-sequence-dig.png)
 
 ---
 
